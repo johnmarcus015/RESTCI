@@ -16,31 +16,31 @@ function configController {
 
             public function __construct() {
                 parent::__construct();
+                \$this->methods['index_get']['limit'] = 5; // 500 requests per hour per user/key
+                \$this->methods['index_post']['limit'] = 5; // 100 requests per hour per user/key
+                \$this->methods['index_delete']['limit'] = 5; // 50 requests per hour per user/key
+
                 \$this->load->model('"$ctrlM"_model');
                 \$this->load->library('Authorization_Token');
-            }
-
-            private function verifyToken(){
                 \$isTokenValid = \$this->authorization_token->validateToken();
                 if (!empty(\$isTokenValid) and \$isTokenValid['status'] === true) {
-
                 } else {
                     \$r = array(
                         'status' => false,
                         'message' => \$isTokenValid['message'],
                     );
+                    \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST);
                 }
             }
 
             public function index_get(){
-                \$this->verifyToken();
                 \$id = \$this->get('id');
                 if (!empty(\$id)){
                     \$r = \$this->"$ctrlM"_model->readById(\$id);
                     if(count(\$r) == 0){
                         \$r=array(
                             'status' => FALSE, 
-                            'message' => '"$ctrlM" not found!'
+                            'message' => '"$ctrl" not found!'
                         );
                     }
                 } else {
@@ -48,7 +48,7 @@ function configController {
                     if(count(\$r) == 0){
                         \$r=array(
                             'status' => FALSE, 
-                            'message' => 'No one "$ctrlM" registered!'
+                            'message' => 'No one "$ctrl" registered!'
                         );
                     }
                 }
@@ -56,11 +56,60 @@ function configController {
             }
 
             public function index_put(){
-                \$id = \$this->uri->segment(3);
-                \$data = array('name' => \$this->get('name'),
-                'pass' => \$this->get('pass'),
-                'type' => \$this->get('type')
-                );
+
+                \$_POST = json_decode(\$this->security->xss_clean(file_get_contents(\"php://input\")), true);
+
+                \$id = \$this->input->post('id');
+                \$username = \$this->input->post('username');
+                \$email = \$this->input->post('email');
+                \$password = \$this->input->post('password');
+                \$fullName = \$this->input->post('full_name');
+
+                \$this->form_validation->set_data([
+                    'id' => \$id, 
+                    'username' => \$username, 
+                    'email' => \$email, 
+                    'password' => \$password, 
+                    'full_name' => \$fullName
+                ]);
+
+                \$this->form_validation->set_rules('id', 'ID', 'trim|required|numeric');
+                \$this->form_validation->set_rules('username', 'Username', 'trim|required|alpha_numeric|max_length[20]');
+                \$this->form_validation->set_rules('email', 'Email', 'trim|required|valid_email|max_length[80]');
+                \$this->form_validation->set_rules('password', 'Password', 'trim|required|max_length[100]');
+                \$this->form_validation->set_rules('full_name', 'Full Name', 'trim|required|max_length[50]');
+
+                if(\$this->form_validation->run() == FALSE){
+                    \$r=array(
+                        'status' => FALSE, 
+                        'error' => \$this->form_validation->error_array(), 
+                        'message' => validation_errors()
+                    );
+                    \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST); 
+                } else {
+                    \$data = array(
+                        'id' => \$id, 
+                        'username' => \$username,
+                        'email' => \$email,
+                        'password' => md5(\$password),
+                        'full_name' => \$fullName,
+                        'updated_at' => date('Y-m-d h:i:s'),
+                    );
+                    \$r = \$this->"$ctrlM"_model->update(\$data);
+                    if(\$r > 0 AND !empty(\$r)) {
+                        \$r=array(
+                            'status' => TRUE, 
+                            'message' => '"$ctrl" updated sucessfull!'
+                        );
+                        \$this->response(\$r, REST_Controller::HTTP_OK); 
+                    } else {
+                        \$r=array(
+                            'status' => FALSE, 
+                            'message' => 'Not updated data!'
+                        );
+                        \$this->response(\$r, REST_Controller::HTTP_NOT_FOUND); 
+                    }
+                }
                 \$r = \$this->"$ctrlM"_model->update(\$id,\$data);
                 \$this->response(\$r, REST_Controller::HTTP_OK); 
             }
@@ -97,7 +146,7 @@ function configController {
                     if(\$r > 0 AND !empty(\$r)) {
                         \$r=array(
                             'status' => TRUE, 
-                            'message' => 'User registration sucessfull!'
+                            'message' => '"$ctrl" registration sucessfull!'
                         );
                         \$this->response(\$r, REST_Controller::HTTP_OK); 
                     } else {
@@ -111,9 +160,30 @@ function configController {
             }
 
             public function index_delete(){
-                \$id = \$this->uri->segment(3);
-                \$r = \$this->"$ctrlM"_model->delete(\$id);
-                \$this->response(\$r); 
+                \$id = \$this->uri->segment(2);
+                if(empty(\$id) AND !is_numeric(\$id)){
+                    //ID IS NOT VALID 
+                    \$r = array(
+                        'status' => false,
+                        'message' => 'Invalid ID!',
+                    );
+                    \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST); 
+                } else {
+                    \$output = \$this->"$ctrlM"_model->delete(\$id);
+                    if(\$output == true AND !empty(\$output)){
+                        \$r = array(
+                            'status' => true,
+                            'message' => '"$ctrl" deleted with sucessfull!',
+                        );
+                        \$this->response(\$r, REST_Controller::HTTP_OK); 
+                    } else {
+                        \$r = array(
+                            'status' => true,
+                            'message' => '"$ctrl" not deleted!',
+                        );
+                    }
+                    \$this->response(\$r, REST_Controller::HTTP_OK); 
+                }
             }
         }
     " >> $fileController
@@ -153,32 +223,43 @@ function configModel {
                 }
             }
 
-            public function update(\$id,\$data){
-                \$this->user_name    = \$data['name'];
-                \$this->user_password  = \$data['pass'];
-                \$this->user_type = \$data['type'];
-                \$result = \$this->db->update('"$ctrlM"',\$this,array('id' => \$id));
-                if(\$result){
-                    return 'Data is updated successfully';
+            public function update(\$data){
+                \$this->id = \$data['id'];
+                \$this->username = \$data['username'];
+                \$this->email = \$data['email'];
+                \$this->password = \$data['password'];
+                \$this->full_name = \$data['full_name'];
+                \$this->updated_at = \$data['updated_at'];
+                \$this->db->where('id', \$this->id);
+                \$this->db->get('"$ctrlM"');
+                if(\$this->db->affected_rows() > 0){
+                    return \$this->db->update('"$ctrlM"', \$this);
                 } else {
-                    return 'Error has occurred';
+                    return false;
                 }
             }
 
             public function delete(\$id){
-                \$result = \$this->db->query('delete from "$ctrlM" where id = \$id');
-                if(\$result){
-                    return 'Data is deleted successfully';
+                \$this->db->where('id', \$id);
+                \$this->db->get('"$ctrlM"');
+                if(\$this->db->affected_rows() > 0){
+                    \$this->db->where('id', \$id);
+                    \$this->db->delete('"$ctrlM"');
+                    if(\$this->db->affected_rows() > 0){
+                        return true;
+                    } else {
+                        return false;
+                    }
                 } else {
-                    return 'Error has occurred';
+                    return false;
                 }
             }
         }
     " >> $fileModel
 }
 
-function configControllerLogin {
-    fileController='application/controllers/Login.php'
+function configControllerCredential {
+    fileController='application/controllers/Credential.php'
     touch $fileController
     echo "
         <?php
@@ -190,11 +271,11 @@ function configControllerLogin {
         require APPPATH . 'libraries/REST_Controller.php';
         require APPPATH . 'libraries/Format.php';
 
-        class Login extends REST_Controller {
+        class Credential extends REST_Controller {
 
             public function __construct() {
                 parent::__construct();
-                \$this->load->model('login_model');
+                \$this->load->model('credential_model');
             }
 
             public function index_post(){
@@ -212,7 +293,7 @@ function configControllerLogin {
                     );
                     \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST); 
                 } else {
-                    \$resultLogin = \$this->login_model->login(\$email,\$password);
+                    \$resultLogin = \$this->credential_model->login(\$email,\$password);
                     if(!empty(\$resultLogin) AND \$resultLogin != FALSE){
                         \$this->load->library('Authorization_Token');
                         \$tokenData['id'] = \$resultLogin->id;
@@ -223,19 +304,31 @@ function configControllerLogin {
                         \$tokenData['updated_at'] = \$resultLogin->updated_at;
                         \$tokenData['time'] = time();
                         \$token = \$this->authorization_token->generateToken(\$tokenData);
-                        \$returnData = array(
-                            'id' => \$resultLogin->id,
-                            'username' => \$resultLogin->username,
-                            'email' => \$resultLogin->email,
-                            'full_name' => \$resultLogin->full_name,
-                            'token' => \$token
-                        );
-                        \$r=array(
-                            'status' => TRUE, 
-                            'data' => \$returnData,
-                            'message' => 'User logged with successfull!'
-                        );
-                        \$this->response(\$r, REST_Controller::HTTP_OK);
+
+                        \$level = \$this->put('level') ? \$this->put('level') : 1;
+                        \$ignore_limits = ctype_digit(\$this->put('ignore_limits')) ? (int) \$this->put('ignore_limits') : 1;
+
+                        if (\$this->_insert_key(\$token, ['level' => \$level, 'ignore_limits' => \$ignore_limits])){
+                            \$returnData = array(
+                                'id' => \$resultLogin->id,
+                                'username' => \$resultLogin->username,
+                                'email' => \$resultLogin->email,
+                                'full_name' => \$resultLogin->full_name,
+                                'token' => \$token
+                            );
+                            \$r=array(
+                                'status' => TRUE, 
+                                'data' => \$returnData,
+                                'message' => 'User logged with successfull!'
+                            );
+                            \$this->response(\$r, REST_Controller::HTTP_OK);
+                        } else {
+                            \$r=array(
+                                'status' => FALSE, 
+                                'message' => 'Token is not generated!'
+                            );
+                            \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST);
+                        }
                     } else {
                         \$r=array(
                             'status' => FALSE, 
@@ -247,22 +340,27 @@ function configControllerLogin {
                 }
             }
 
-            public function logout(){
+            private function _insert_key(\$key, \$data){
+                \$data[config_item('rest_key_column')] = \$key;
+                \$data['date_created'] = function_exists('now') ? now() : time();
 
+                return \$this->rest->db
+                    ->set(\$data)
+                    ->insert(config_item('rest_keys_table'));
             }
         }
     " >> $fileController
 }
 
-function configModelLogin {
-    fileModel='application/models/login_model.php'
+function configModelCredential {
+    fileModel='application/models/credential_model.php'
     touch $fileModel
     echo "
         <?php
 
         defined('BASEPATH') OR exit('No direct script access allowed');
 
-        class Login_model extends CI_Model {
+        class Credential_model extends CI_Model {
 
             public function login(\$email, \$password){
                 \$this->db->where('email',\$email);
@@ -581,7 +679,7 @@ function configJWT {
 function main {
     if [ -z "$1" ]
     then
-        echo "Type name of ctrl, followed by [ENTER]:"
+        echo "route name: "
         read ctrl
     else
         ctrl=$1
@@ -592,8 +690,8 @@ function main {
     configModel
     configLibraryAuthorization
     configJWT
-    configControllerLogin
-    configModelLogin
+    configControllerCredential
+    configModelCredential
 }
 
 main $1
