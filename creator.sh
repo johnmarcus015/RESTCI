@@ -23,14 +23,6 @@ function configController {
                 \$this->load->model('"$ctrlM"_model');
                 \$this->load->library('Authorization_Token');
                 \$isTokenValid = \$this->authorization_token->validateToken();
-                if (!empty(\$isTokenValid) and \$isTokenValid['status'] === true) {
-                } else {
-                    \$r = array(
-                        'status' => false,
-                        'message' => \$isTokenValid['message'],
-                    );
-                    \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST);
-                }
             }
 
             public function index_get(){
@@ -258,8 +250,8 @@ function configModel {
     " >> $fileModel
 }
 
-function configControllerCredential {
-    fileController='application/controllers/Credential.php'
+function configControllerAuth {
+    fileController='application/controllers/Auth.php'
     touch $fileController
     echo "
         <?php
@@ -271,11 +263,11 @@ function configControllerCredential {
         require APPPATH . 'libraries/REST_Controller.php';
         require APPPATH . 'libraries/Format.php';
 
-        class Credential extends REST_Controller {
+        class Auth extends REST_Controller {
 
             public function __construct() {
                 parent::__construct();
-                \$this->load->model('credential_model');
+                \$this->load->model('auth_model');
             }
 
             public function index_post(){
@@ -293,7 +285,7 @@ function configControllerCredential {
                     );
                     \$this->response(\$r, REST_Controller::HTTP_BAD_REQUEST); 
                 } else {
-                    \$resultLogin = \$this->credential_model->login(\$email,\$password);
+                    \$resultLogin = \$this->auth_model->login(\$email,\$password);
                     if(!empty(\$resultLogin) AND \$resultLogin != FALSE){
                         \$this->load->library('Authorization_Token');
                         \$tokenData['id'] = \$resultLogin->id;
@@ -305,10 +297,7 @@ function configControllerCredential {
                         \$tokenData['time'] = time();
                         \$token = \$this->authorization_token->generateToken(\$tokenData);
 
-                        \$level = \$this->put('level') ? \$this->put('level') : 1;
-                        \$ignore_limits = ctype_digit(\$this->put('ignore_limits')) ? (int) \$this->put('ignore_limits') : 1;
-
-                        if (\$this->_insert_key(\$token, ['level' => \$level, 'ignore_limits' => \$ignore_limits])){
+                        if (\$this->_insert_key(\$token)){
                             \$returnData = array(
                                 'id' => \$resultLogin->id,
                                 'username' => \$resultLogin->username,
@@ -340,27 +329,27 @@ function configControllerCredential {
                 }
             }
 
-            private function _insert_key(\$key, \$data){
-                \$data[config_item('rest_key_column')] = \$key;
-                \$data['date_created'] = function_exists('now') ? now() : time();
+            private function _insert_key(\$key){
+                \$data['token'] = \$key;
+                \$data['created'] = date('Y-m-d h:i:s');
 
                 return \$this->rest->db
                     ->set(\$data)
-                    ->insert(config_item('rest_keys_table'));
+                    ->insert(config_item('rest_tokens_table'));
             }
         }
     " >> $fileController
 }
 
-function configModelCredential {
-    fileModel='application/models/credential_model.php'
+function configModelAuth {
+    fileModel='application/models/auth_model.php'
     touch $fileModel
     echo "
         <?php
 
         defined('BASEPATH') OR exit('No direct script access allowed');
 
-        class Credential_model extends CI_Model {
+        class Auth_model extends CI_Model {
 
             public function login(\$email, \$password){
                 \$this->db->where('email',\$email);
@@ -676,6 +665,42 @@ function configJWT {
     " >> $fileJWT
 }
 
+function configProjectToAcceptJWTAsDefaultAutentication {
+    ex -sc "584i|   case 'token':" -cx application/libraries/REST_Controller.php
+    ex -sc "585i|       \$this->_check_token();" -cx application/libraries/REST_Controller.php
+    ex -sc "586i|   break;" -cx application/libraries/REST_Controller.php
+    ex -sc "2365i| " -cx application/libraries/REST_Controller.php
+    ex -sc "2366i|   /** Check to see if the user is logged in with a token" -cx application/libraries/REST_Controller.php
+    ex -sc "2367i|    * @access protected" -cx application/libraries/REST_Controller.php
+    ex -sc "2368i|    */" -cx application/libraries/REST_Controller.php
+    ex -sc "2369i|    protected function _check_token () {" -cx application/libraries/REST_Controller.php
+    ex -sc "2370i|       if (!empty(\$this->_args[\$this->config->item('rest_token_name')])" -cx application/libraries/REST_Controller.php
+    ex -sc "2371i|           && \$row = \$this->rest->db->where('token', \$this->_args[\$this->config->item('rest_token_name')])->get(\$this->config->item('rest_tokens_table'))->row()) {" -cx application/libraries/REST_Controller.php
+    ex -sc "2372i|          \$this->api_token = \$row;" -cx application/libraries/REST_Controller.php
+    ex -sc "2373i|       } else {" -cx application/libraries/REST_Controller.php
+    ex -sc "2374i|           \$this->response([" -cx application/libraries/REST_Controller.php
+    ex -sc "2375i|           \$this->config->item('rest_status_field_name') => FALSE," -cx application/libraries/REST_Controller.php
+    ex -sc "2376i|           \$this->config->item('rest_message_field_name') => \$this->lang->line('text_rest_unauthorized')" -cx application/libraries/REST_Controller.php
+    ex -sc "2377i|                               ], self::HTTP_UNAUTHORIZED);" -cx application/libraries/REST_Controller.php
+    ex -sc "2378i|                   }" -cx application/libraries/REST_Controller.php
+    ex -sc "2379i|               }" -cx application/libraries/REST_Controller.php
+    echo "
+// *** Tokens ***
+/* Default table schema:
+* CREATE TABLE \`api_tokens\` (
+    \`id\` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+    \`token\` TEXT NOT NULL,
+    \`created\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (\`id\`)
+)
+COLLATE='latin1_swedish_ci'
+ENGINE=InnoDB
+*/
+\$config['rest_token_name'] = 'X-Auth-Token';
+\$config['rest_tokens_table'] = 'api_tokens';
+    " >> 'application/config/rest.php'
+}
+
 function main {
     if [ -z "$1" ]
     then
@@ -690,8 +715,9 @@ function main {
     configModel
     configLibraryAuthorization
     configJWT
-    configControllerCredential
-    configModelCredential
+    configControllerAuth
+    configModelAuth
+    configProjectToAcceptJWTAsDefaultAutentication
 }
 
 main $1

@@ -1,7 +1,8 @@
 #!/bin/bash
 function getInformationProject {
-	printf "autentication mode: ['t' - token, 'b' - basic, 'n' - no auth]('t')"
-	read autentication
+	#printf "autentication mode: ['t' - JWT, 'b' - Basic, 'n' - No Auth]('t')"
+	#read autentication
+	autentication=""
 	if [ "${autentication}" = "" ]
 		then
 				autentication='token'
@@ -58,9 +59,6 @@ function configProject {
 	wget -v https://github.com/chriskacerguis/codeigniter-restserver/archive/master.zip
 	unzip master.zip
 	rm -rf master.zip
-	wget -v https://github.com/philsturgeon/codeigniter-restclient/archive/master.zip
-	unzip master.zip
-	rm -rf master.zip
 	mv CodeIgniter-3.1.9/ api/
 	rm -rf api/contributing.md
 	rm -rf api/readme.rst
@@ -69,8 +67,8 @@ function configProject {
 	sed -i -e "s%\[\'base_url\'\] = \'\'%\[\'base_url\'\] = \'http:\/\/\'.\$_SERVER\[\'HTTP_HOST\'\].\'\/api\/\'%g" api/application/config/config.php
 	cp -r codeigniter-restserver-master/application/* api/application/
 	rm -rf codeigniter-restserver-master
-	cp -r codeigniter-restclient-master/* api/
-	rm -rf codeigniter-restclient-master
+	rm -rf api/application/config/*-e
+	rm -rf api/application/config/*.sample
 	if [ "${autentication}" = "token" ]
 	then
 		wget -v http://github.com/firebase/php-jwt/archive/master.zip
@@ -81,6 +79,7 @@ function configProject {
 		rm -rf php-jwt/README.md
 		rm -rf php-jwt/LICENSE
 		mv php-jwt/src/* php-jwt/src/..
+		rm -rf php-jwt/src/
 		mkdir api/application/third_party/php-jwt
 		cp -r php-jwt/ api/application/third_party/php-jwt
 		rm -rf php-jwt
@@ -110,33 +109,50 @@ function configProject2 {
 	echo "RewriteRule ^(.*)$ index.php/\$1 [L]" >> .htaccess 
 }
 
+function removeView {
+	rm -rf api/application/controllers/Rest_server.php
+	rm -rf api/application/controllers/Welcome.php
+	rm -rf api/application/views/rest_server.php
+	rm -rf api/application/views/welcome_message.php
+	replaceValueOfFile "api/application/config/routes.php" "\$route\[\'default_controller\'\] = \'welcome\';" "\$route\[\'default_controller\'\] = \'\';"
+}
+
 function configHtaccess {
-	cd api/
-	touch .htaccess
-	echo "RewriteEngine On" >> .htaccess
-	echo "RewriteCond %{REQUEST_FILENAME} !-f" >> .htaccess
-	echo "RewriteCond %{REQUEST_FILENAME} !-d" >> .htaccess
-	echo "RewriteRule ^(.*)$ index.php/\$1 [L]" >> .htaccess 
+	touch api/.htaccess
+	echo "RewriteEngine On" >> api/.htaccess
+	echo "RewriteCond %{REQUEST_FILENAME} !-f" >> api/.htaccess
+	echo "RewriteCond %{REQUEST_FILENAME} !-d" >> api/.htaccess
+	echo "RewriteRule ^(.*)$ index.php/\$1 [L]" >> api/.htaccess 
 }
 
 function configDatabase {
-	replaceValueOfFile "application/config/database.php" "\'hostname\' => \'localhost\'" "\'hostname\' => \'$host\'"
-	replaceValueOfFile "application/config/database.php" "\'username\' => \'\'" "\'username\' => \'$user\'"
-	replaceValueOfFile "application/config/database.php" "\'password\' => \'\'" "\'password\' => \'$password\'"
-	replaceValueOfFile "application/config/database.php" "\'database\' => \'\'" "\'database\' => \'$database\'"
-	replaceValueOfFile "application/config/autoload.php" "\'libraries\'\] = array();" "\'libraries\'\] = array(\'database\', \'form_validation\');" 
-	/Applications/MAMP/Library/bin/mysql --user=$user --password=$password --host=$host --execute='use '$database'; CREATE TABLE `keys` (`id` int(11) NOT NULL,`key` TEXT NOT NULL,`level` int(2) NOT NULL,`ignore_limits` tinyint(1) NOT NULL DEFAULT 0,`is_private_key` tinyint(1) NOT NULL DEFAULT 0,`ip_addresses` text,`date_created` int(11) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `logs` (`id` int(11) NOT NULL,`uri` varchar(255) NOT NULL,`method` varchar(6) NOT NULL,`params` text,`api_key` varchar(40) NOT NULL,`ip_address` varchar(45) NOT NULL,`time` int(11) NOT NULL,`rtime` float DEFAULT NULL,`authorized` varchar(1) NOT NULL,`response_code` smallint(3) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `users` (`id` int(11) NOT NULL,`username` varchar(15) NOT NULL,`email` varchar(100) NOT NULL,`password` longtext CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,`full_name` text NOT NULL,`created_at` text NOT NULL,`updated_at` text NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8; ALTER TABLE `users` ADD PRIMARY KEY (`id`); ALTER TABLE `users` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT; CREATE TABLE `limits` (`id` INT(11) NOT NULL AUTO_INCREMENT,`uri` VARCHAR(255) NOT NULL,`count` INT(10) NOT NULL,`hour_started` INT(11) NOT NULL,`api_key` VARCHAR(40) NOT NULL,PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8;'
+	replaceValueOfFile "api/application/config/database.php" "\'hostname\' => \'localhost\'" "\'hostname\' => \'$host\'"
+	replaceValueOfFile "api/application/config/database.php" "\'username\' => \'\'" "\'username\' => \'$user\'"
+	replaceValueOfFile "api/application/config/database.php" "\'password\' => \'\'" "\'password\' => \'$password\'"
+	replaceValueOfFile "api/application/config/database.php" "\'database\' => \'\'" "\'database\' => \'$database\'"
+	replaceValueOfFile "api/application/config/autoload.php" "\'libraries\'\] = array();" "\'libraries\'\] = array(\'database\', \'form_validation\');" 
+	#/Applications/MAMP/Library/bin/mysql --user=$user --password=$password --host=$host --execute='use '$database'; CREATE TABLE `keys` (`id` int(11) NOT NULL,`key` TEXT NOT NULL,`level` int(2) NOT NULL,`ignore_limits` tinyint(1) NOT NULL DEFAULT 0,`is_private_key` tinyint(1) NOT NULL DEFAULT 0,`ip_addresses` text,`date_created` int(11) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `logs` (`id` int(11) NOT NULL,`uri` varchar(255) NOT NULL,`method` varchar(6) NOT NULL,`params` text,`api_key` varchar(40) NOT NULL,`ip_address` varchar(45) NOT NULL,`time` int(11) NOT NULL,`rtime` float DEFAULT NULL,`authorized` varchar(1) NOT NULL,`response_code` smallint(3) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `users` (`id` int(11) NOT NULL,`username` varchar(15) NOT NULL,`email` varchar(100) NOT NULL,`password` longtext CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,`full_name` text NOT NULL,`created_at` text NOT NULL,`updated_at` text NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8; ALTER TABLE `users` ADD PRIMARY KEY (`id`); ALTER TABLE `users` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT; CREATE TABLE `limits` (`id` INT(11) NOT NULL AUTO_INCREMENT,`uri` VARCHAR(255) NOT NULL,`count` INT(10) NOT NULL,`hour_started` INT(11) NOT NULL,`api_key` VARCHAR(40) NOT NULL,PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8;'
+	if [ "${autentication}" = "token" ]
+		then
+			/Applications/MAMP/Library/bin/mysql --user=$user --password=$password --host=$host --execute='use '$database'; CREATE TABLE `keys` (`id` int(11) NOT NULL,`key` TEXT NOT NULL,`level` int(2) NOT NULL,`ignore_limits` tinyint(1) NOT NULL DEFAULT 0,`is_private_key` tinyint(1) NOT NULL DEFAULT 0,`ip_addresses` text,`date_created` int(11) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `logs` (`id` int(11) NOT NULL,`uri` varchar(255) NOT NULL,`method` varchar(6) NOT NULL,`params` text,`api_key` varchar(40) NOT NULL,`ip_address` varchar(45) NOT NULL,`time` int(11) NOT NULL,`rtime` float DEFAULT NULL,`authorized` varchar(1) NOT NULL,`response_code` smallint(3) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `users` (`id` int(11) NOT NULL,`username` varchar(15) NOT NULL,`email` varchar(100) NOT NULL,`password` longtext CHARACTER SET utf8 COLLATE utf8_bin NOT NULL,`full_name` text NOT NULL,`created_at` text NOT NULL,`updated_at` text NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8; ALTER TABLE `users` ADD PRIMARY KEY (`id`); ALTER TABLE `users` MODIFY `id` int(11) NOT NULL AUTO_INCREMENT; CREATE TABLE `limits` (`id` INT(11) NOT NULL AUTO_INCREMENT,`uri` VARCHAR(255) NOT NULL,`count` INT(10) NOT NULL,`hour_started` INT(11) NOT NULL,`api_key` VARCHAR(40) NOT NULL,PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8; CREATE TABLE `api_tokens` (`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,`token` TEXT NOT NULL,`created` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY (`id`))'
+	elif [ "${autentication}" = "basic" ]
+		then
+		echo ""
+	elif [ "${autentication}" = "FALSE" ]
+		then
+		echo ""
+	fi
 }
 
 function configAuth {
-	#sed -i -e "s%rest_enable_keys\'\] = FALSE;%rest_enable_keys\'\] = TRUE;%g" application/config/rest.php
-	#sed -i -e "s%rest_auth\'\] = FALSE;%rest_auth\'\] = \'basic\';%g" application/config/rest.php
-	#replaceValueOfFile "application/config/rest.php" "rest_logs_table\'\] = \'logs\';" "rest_logs_table\'\] = \'logs\';" 
-	replaceValueOfFile "application/config/rest.php" "auth_source\'\] = \'ldap\';" "auth_source\'\] = \'\';" 
-	replaceValueOfFile "application/config/rest.php" "rest_enable_logging\'\] = FALSE;" "rest_enable_logging\'\] = TRUE;"
-	replaceValueOfFile "application/controllers/api/Key.php" "\/\/ This can be removed if you use __autoload() in config.php OR use Modular Extensions" "require APPPATH . \'libraries\/REST_Controller.php\';"
-	replaceValueOfFile "application/controllers/api/Key.php" "\/\*\* \@noinspection PhpIncludeInspection \*\/" "require APPPATH . \'libraries\/Format.php\';"
-	replaceValueOfFile "application/config/rest.php" "\$config\[\'rest_enable_limits\'\] = FALSE;" "\$config\[\'rest_enable_limits\'\] = TRUE;"
+	#sed -i -e "s%rest_enable_keys\'\] = FALSE;%rest_enable_keys\'\] = TRUE;%g" api/application/config/rest.php
+	#sed -i -e "s%rest_auth\'\] = FALSE;%rest_auth\'\] = \'basic\';%g" api/application/config/rest.php
+	#replaceValueOfFile "api/application/config/rest.php" "rest_logs_table\'\] = \'logs\';" "rest_logs_table\'\] = \'logs\';" 
+	replaceValueOfFile "api/application/config/rest.php" "auth_source\'\] = \'ldap\';" "auth_source\'\] = \'\';" 
+	replaceValueOfFile "api/application/config/rest.php" "rest_enable_logging\'\] = FALSE;" "rest_enable_logging\'\] = TRUE;"
+	replaceValueOfFile "api/application/controllers/api/Key.php" "\/\/ This can be removed if you use __autoload() in config.php OR use Modular Extensions" "require APPPATH . \'libraries\/REST_Controller.php\';"
+	replaceValueOfFile "api/application/controllers/api/Key.php" "\/\*\* \@noinspection PhpIncludeInspection \*\/" "require APPPATH . \'libraries\/Format.php\';"
+	replaceValueOfFile "api/application/config/rest.php" "\$config\[\'rest_enable_limits\'\] = FALSE;" "\$config\[\'rest_enable_limits\'\] = TRUE;"
 }
 
 function openProject {
@@ -154,6 +170,7 @@ configProject
 configHtaccess 
 configDatabase
 configAuth 
+removeView
 createControllerUser
 #openProject
 #https://stackoverflow.com/questions/43406721/token-based-authentication-in-codeigniter-rest-server-library
